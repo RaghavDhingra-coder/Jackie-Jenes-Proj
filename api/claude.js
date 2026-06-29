@@ -1,5 +1,5 @@
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim();
-const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-1.5-flash-latest';
 
 // Vercel serverless equivalent of server/index.js — accepts the same
 // { system, messages } shape and returns Anthropic's { content: [...] }
