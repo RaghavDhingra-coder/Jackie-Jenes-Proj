@@ -1,21 +1,17 @@
-// .trim() guards against trailing newlines/whitespace that sneak in when
-// pasting values into the Vercel dashboard — Authorization headers and
-// model slugs with stray whitespace get rejected by OpenRouter with a 400.
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim();
-const MODEL = process.env.OPENROUTER_MODEL?.trim() || 'openai/gpt-4o-mini';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim();
 
 // Vercel serverless equivalent of server/index.js — accepts the same
 // { system, messages } shape and returns Anthropic's { content: [...] }
-// shape so the frontend doesn't need to know it's talking to OpenRouter.
+// shape so the frontend doesn't need to know it's talking to Gemini.
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
 
-  if (!OPENROUTER_API_KEY) {
+  if (!GEMINI_API_KEY) {
     res.status(500).json({
-      error: 'Server is missing OPENROUTER_API_KEY. Add it in the Vercel project Environment Variables.',
+      error: 'Server is missing GEMINI_API_KEY. Add it in the Vercel project Environment Variables.',
     });
     return;
   }
@@ -28,37 +24,39 @@ export default async function handler(req, res) {
     return;
   }
 
-  const openRouterMessages = system ? [{ role: 'system', content: system }, ...messages] : messages;
-
   try {
-    console.log('Calling OpenRouter with model:', MODEL, 'message count:', openRouterMessages.length);
+    console.log('Calling Gemini with message count:', messages.length);
 
-    const orRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1000,
-        messages: openRouterMessages,
-      }),
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: {
+            parts: [{ text: system }],
+          },
+          contents: messages.map((m) => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }],
+          })),
+        }),
+      }
+    );
 
-    const responseText = await orRes.text();
-    console.log('OpenRouter status:', orRes.status);
-    if (!orRes.ok) {
-      console.log('OpenRouter error response:', responseText);
-      res.status(orRes.status).json({ error: responseText });
+    const responseText = await response.text();
+    console.log('Gemini status:', response.status);
+    if (!response.ok) {
+      console.log('Gemini error response:', responseText);
+      res.status(response.status).json({ error: responseText });
       return;
     }
 
     const data = JSON.parse(responseText);
-    const text = data.choices?.[0]?.message?.content || '';
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     res.status(200).json({ content: [{ type: 'text', text }] });
   } catch (err) {
-    console.error('OpenRouter proxy error:', err);
-    res.status(502).json({ error: 'Failed to reach the OpenRouter API.' });
+    console.error('Gemini proxy error:', err);
+    res.status(502).json({ error: 'Failed to reach the Gemini API.' });
   }
 }
